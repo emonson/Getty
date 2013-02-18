@@ -1,18 +1,24 @@
 import os
 import re
+import sys
 import codecs
 from pymongo import Connection
 
-data_dir = '/Users/emonson/Programming/Getty'
-
-fields_file = 'fields_and_formats.txt'
-fields_path = os.path.join(data_dir, catalogue_file)
+data_dir = '/Users/emonson/Data/Getty'
 
 catalogue_file = 'monson_sales_descriptions.txt'
 catalogue_path = os.path.join(data_dir, catalogue_file)
 
+fields_file = 'format_and_fields.txt'
+fields_path = os.path.join(data_dir, fields_file)
+
 data_file = 'monson_sales_contents.txt'
 data_path = os.path.join(data_dir, data_file)
+
+re_dot = re.compile(r'\.')
+re_dotcomma = re.compile(r'[.,]')
+re_spdash = re.compile(r'[ -]')
+re_spmult = re.compile(r' {2,}')
 
 # Make a connection to Mongo.
 try:
@@ -24,25 +30,29 @@ except ConnectionFailure:
 
 db = db_conn['getty']
 
+# * * DANGER !!!! * *
+db.catalogues.drop()
+db.fields.drop()
+# * *
+
 
 # Catalogue descriptions
 print "Loading Catalogues into DB"
 cat_in = codecs.open(catalogue_path, 'r', 'utf-8')
 
-# Read in titles line
-titles = cat_in.readline()
-
-# Keep track of catalogue IDs for debugging
-cat_ids = []
+# Read in titles line, strip out periods, turn to lowercase, and put in underscores
+titles = cat_in.readline().split('\t')
+cat_field_names = [re_spdash.sub('_',re_dot.sub('',x.strip().lower())) for x in titles]
 
 for line in cat_in:
-	fields = line.rstrip().split('\t')
-	tag = fields[0]
-	cat_ids.append(tag)
-	year = int(fields[1])
-	# Additional fields...
-	# Create catalogue dictionary / document
-	# Put catalogue doc in db.catalogues collection
+	data = line.rstrip().split('\t')
+	cat_doc = {}
+	for ii, item in enumerate(data):
+		# strip double quotes and turn multiple spaces into single
+		item_base = re_spmult.sub(' ', item.strip(' "'))
+		if item_base:
+			cat_doc[cat_field_names[ii]] = item_base
+	db.catalogues.save(cat_doc)
 
 
 # Sales contents fields
@@ -50,18 +60,25 @@ print "Loading Fields into DB"
 fields_in = codecs.open(fields_path, 'r', 'utf-8')
 
 # Read in titles line
-titles = fields_in.readline()
-# Parse column names into field name document fields
+titles = fields_in.readline().split('\t')
+field_field_names = [re_spdash.sub('_',re_dot.sub('',x.strip().lower())) for x in titles]
 
 for line in fields_in:
-	fields = line.rstrip().split('\t')
-	tag = fields[0]
-	cat_ids.append(tag)
-	year = int(fields[1])
-	# Additional fields...
-	# Create fields dictionary / document
-	# Put fields doc in db.fields collection
-	
+	data = line.rstrip().split('\t')
+	field_doc = {}
+	for ii, item in enumerate(data):
+		# strip double quotes and turn multiple spaces into single
+		item_base = re_spmult.sub(' ', item.strip(' "'))
+		if item_base:
+			field_doc[field_field_names[ii]] = item_base
+			# Reduce full field name to lowercase underscore version
+			if field_field_names[ii] == 'full_field_name':	
+				item_base_under = re_spdash.sub('_',re_dotcomma.sub('',item_base.strip().lower()))
+				field_doc['db_field_name'] = item_base_under
+	db.fields.save(field_doc)
+
+sys.exit()
+
 	
 # Sales contents actual data
 print "Loading Sales Contents into DB"
