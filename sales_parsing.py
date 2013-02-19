@@ -62,6 +62,8 @@ for line in cat_in:
 print "Loading Fields into DB"
 fields_in = codecs.open(fields_path, 'r', 'utf-8')
 sales_fields = {}
+sales_blocks = {}
+sales_repeats = {}
 
 # Read in titles line
 titles = fields_in.readline().split('\t')
@@ -81,6 +83,11 @@ for line in fields_in:
 				field_doc['db_field_name'] = item_base_under
 				# Record dictionary of file_label -> db_field_name
 				sales_fields[field_doc['file_label']] = item_base_under
+			if field_field_names[ii] == 'repeat':
+				sales_repeats[field_doc['file_label']] = item_base
+			if field_field_names[ii] == 'block':
+				sales_blocks[field_doc['file_label']] = item_base
+				
 	db.fields.save(field_doc)
 
 
