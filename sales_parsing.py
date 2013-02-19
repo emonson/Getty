@@ -2,6 +2,7 @@ import os
 import re
 import sys
 import codecs
+from datetime import datetime
 from pymongo import Connection
 
 data_dir = '/Users/emonson/Data/Getty'
@@ -33,6 +34,7 @@ db = db_conn['getty']
 # * * DANGER !!!! * *
 db.catalogues.drop()
 db.fields.drop()
+db.sales.drop()
 # * *
 
 
@@ -58,6 +60,7 @@ for line in cat_in:
 # Sales contents fields
 print "Loading Fields into DB"
 fields_in = codecs.open(fields_path, 'r', 'utf-8')
+sales_fields = {}
 
 # Read in titles line
 titles = fields_in.readline().split('\t')
@@ -75,19 +78,35 @@ for line in fields_in:
 			if field_field_names[ii] == 'full_field_name':	
 				item_base_under = re_spdash.sub('_',re_dotcomma.sub('',item_base.strip().lower()))
 				field_doc['db_field_name'] = item_base_under
+				# Record dictionary of file_label -> db_field_name
+				sales_fields[field_doc['file_label']] = item_base_under
 	db.fields.save(field_doc)
 
-sys.exit()
 
-	
 # Sales contents actual data
+# TODO: Need to add in subdocument parsing / adding...
 print "Loading Sales Contents into DB"
 data_in = codecs.open(data_path, 'r', 'utf-8')
 
-# current_record = {}
-# current_field = None
-# Go line by line through sales contents file
-# If line starts with " "
-#   then append line to 
-# If line starts with "--RECORD NUMBER--",
-#   then new record dictionary
+current_record = {}
+current_field = None
+for line in data_in:
+	# TODO: Need some sort of progress indicator...
+	if line.startswith(' '):
+		current_record[current_field] += ' ' + line.strip()
+		continue
+	key = line[:17].strip()
+	value = line[17:].strip()
+	if key == '--RECORD NUMBER--':
+		if current_field is not None:
+			db.sales.save(current_record)
+		current_record = {}
+		current_field = 'record_number'
+	else:
+		if key in sales_fields:
+			current_field = sales_fields[key]
+		else:
+			sys.exit('Problem with key ' + key)
+	# TODO: Need to add in value type changes here...
+	current_record[current_field] = value
+	
