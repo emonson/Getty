@@ -64,6 +64,7 @@ fields_in = codecs.open(fields_path, 'r', 'utf-8')
 sales_fields = {}
 sales_blocks = {}
 sales_repeats = {}
+sales_formats = {}
 
 # Read in titles line
 titles = fields_in.readline().split('\t')
@@ -75,6 +76,7 @@ for line in fields_in:
 	for ii, item in enumerate(data):
 		# strip double quotes and turn multiple spaces into single
 		item_base = re_spmult.sub(' ', item.strip(' "'))
+		# If anything left after stripping extras
 		if item_base:
 			field_doc[field_field_names[ii]] = item_base
 			# Reduce full field name to lowercase underscore version
@@ -87,6 +89,8 @@ for line in fields_in:
 				sales_repeats[field_doc['file_label']] = item_base
 			if field_field_names[ii] == 'block':
 				sales_blocks[field_doc['file_label']] = item_base
+			if field_field_names[ii] == 'subfields':
+				sales_formats[field_doc['file_label']] = item_base
 				
 	db.fields.save(field_doc)
 
@@ -111,10 +115,38 @@ for line in data_in:
 		current_record = {}
 		current_field = 'record_number'
 	else:
+		# Check first to see if field name is one we know about
 		if key in sales_fields:
+			# If this is a repeat field, then add value to the list
+			if current_field == sales_fields[key]:
+				
 			current_field = sales_fields[key]
+			
 		else:
 			sys.exit('Problem with key ' + key)
 	# TODO: Need to add in value type changes here...
 	current_record[current_field] = value
 	
+# If key is record number, save past doc, reset current_field to null and current_doc to {}
+# If key isn't in fields list, exit with error
+# else
+# If key is repeat of current_field:
+#		increment key_index
+#		if key has block and block == current_block
+#			if len(doc[current_block]) < key_index + 1:
+#				doc[current_block].append({})
+#			doc[current_block][key_index][current_field] = value
+#		(Note: can't be repeat and block but non-current block)
+#		else
+#			doc[current_field].append(value)
+# else: # Not repeat of current field
+# 	current_field = key, key_index = 0
+#		if key in repeaters:
+#			if key in blockers:
+#				current_block = block
+#				doc[current_block] = []
+#			else:
+#				doc[key] = []
+#			doc
+#		else:
+#			doc[key] = value
