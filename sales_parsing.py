@@ -6,12 +6,13 @@ from datetime import datetime
 from pymongo import Connection
 
 data_dir = '/Users/emonson/Data/Getty'
+script_dir = '/Users/emonson/Programming/ArtMarkets/Getty'
 
 catalogue_file = 'monson_sales_descriptions.txt'
 catalogue_path = os.path.join(data_dir, catalogue_file)
 
 fields_file = 'format_and_fields.txt'
-fields_path = os.path.join(data_dir, fields_file)
+fields_path = os.path.join(script_dir, fields_file)
 
 data_file = 'monson_sales_contents.txt'
 data_path = os.path.join(data_dir, data_file)
