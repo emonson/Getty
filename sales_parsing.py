@@ -22,6 +22,16 @@ re_dotcomma = re.compile(r'[.,]')
 re_spdash = re.compile(r'[ -]')
 re_spmult = re.compile(r' {2,}')
 
+# Fast file line count subroutine
+# http://stackoverflow.com/questions/845058/how-to-get-line-count-cheaply-in-python
+import subprocess
+def file_len(fname):
+	p = subprocess.Popen(['wc', '-l', fname], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+	result, err = p.communicate()
+	if p.returncode != 0:
+		raise IOError(err)
+	return int(result.strip().split()[0])
+	
 # Make a connection to Mongo.
 try:
     db_conn = Connection()
@@ -97,6 +107,7 @@ for line in fields_in:
 
 # Sales contents actual data
 print "Loading Sales Contents into DB"
+n_lines = file_len(data_path)
 data_in = codecs.open(data_path, 'r', 'utf-8')
 
 doc = {}
@@ -105,12 +116,24 @@ current_block = None
 index = 0
 field = None
 block = None
+key = None
+value = None
 
-for line in data_in:
-	# TODO: Need some sort of progress indicator...
+for ii, line in enumerate(data_in):
+	if ii % 10000 == 0:
+		print str(ii).rjust(len(str(n_lines))), '/', n_lines
+		
 	if line.startswith(' '):
-		doc[current_field] += ' ' + line.strip()
+		# Need to figure out what sort of previous entry, so can append properly
+		if key not in sales_repeats:
+			doc[current_field] += ' ' + line.strip()
+		else:
+			if key not in sales_blocks:
+				doc[current_field][index] += ' ' + line.strip()
+			else:
+				doc[current_block][index][current_field] += ' ' + line.strip()
 		continue
+	
 	key = line[:17].strip()
 	value = line[17:].strip()
 	if key == '--RECORD NUMBER--':
@@ -118,6 +141,7 @@ for line in data_in:
 			db.sales.save(doc)
 		doc = {}
 		current_field = 'record_number'	# or could do None...
+		doc['record_number'] = value
 	else:
 		# Check first to see if field name is one we know about
 		if key not in sales_fields:
@@ -126,6 +150,7 @@ for line in data_in:
 			field = sales_fields[key]
 
 			# This is where real tests start for constructing document
+			# TODO: This is where type changes or additional parsing needs to happen on value...
 			
 			# Repeats False
 			if key not in sales_repeats:
@@ -136,21 +161,24 @@ for line in data_in:
 			# Repeats True
 			else:
 				
+				# Field == current_field False
+				if field != current_field:
+					current_field = field
+					index = 0
+					
+				# Field == current_field True
+				else:
+					index += 1
+				
 				# Blocks False -- List of items
 				if key not in sales_blocks:
-										
-					# Field == current_field False
-					if field != current_field:
-						current_field = field
-						index = 0
+					
+					current_block = None
+
+					if field not in doc:
 						doc[field] = []
 						
-					# Field == current_field True
-					else:
-						index += 1
-					
 					doc[field].append(value)
-					
 				
 				# Blocks True -- List of dicts / objects
 				else:
@@ -158,10 +186,14 @@ for line in data_in:
 					
 					# Block == current_block False
 					if block != current_block:
-						doc[block] = []
 						current_block = block
+
+					if block not in doc:
+						doc[block] = []
 					
-					# Block == current_block True
-					else:
-						
+					if len(doc[block]) < index + 1:
+						doc[block].append({})
+					
+					doc[block][index][field] = value
+					
 			
