@@ -96,57 +96,72 @@ for line in fields_in:
 
 
 # Sales contents actual data
-# TODO: Need to add in subdocument parsing / adding...
 print "Loading Sales Contents into DB"
 data_in = codecs.open(data_path, 'r', 'utf-8')
 
-current_record = {}
+doc = {}
 current_field = None
+current_block = None
+index = 0
+field = None
+block = None
+
 for line in data_in:
 	# TODO: Need some sort of progress indicator...
 	if line.startswith(' '):
-		current_record[current_field] += ' ' + line.strip()
+		doc[current_field] += ' ' + line.strip()
 		continue
 	key = line[:17].strip()
 	value = line[17:].strip()
 	if key == '--RECORD NUMBER--':
-		if current_field is not None:
-			db.sales.save(current_record)
-		current_record = {}
-		current_field = 'record_number'
+		if current_field is not None:		# don't save on first line of the file
+			db.sales.save(doc)
+		doc = {}
+		current_field = 'record_number'	# or could do None...
 	else:
 		# Check first to see if field name is one we know about
-		if key in sales_fields:
-			# If this is a repeat field, then add value to the list
-			if current_field == sales_fields[key]:
-				
-			current_field = sales_fields[key]
-			
+		if key not in sales_fields:
+			sys.exit('Problem with key ' + key)	
 		else:
-			sys.exit('Problem with key ' + key)
-	# TODO: Need to add in value type changes here...
-	current_record[current_field] = value
-	
-# If key is record number, save past doc, reset current_field to null and current_doc to {}
-# If key isn't in fields list, exit with error
-# else
-# If key is repeat of current_field:
-#		increment key_index
-#		if key has block and block == current_block
-#			if len(doc[current_block]) < key_index + 1:
-#				doc[current_block].append({})
-#			doc[current_block][key_index][current_field] = value
-#		(Note: can't be repeat and block but non-current block)
-#		else
-#			doc[current_field].append(value)
-# else: # Not repeat of current field
-# 	current_field = key, key_index = 0
-#		if key in repeaters:
-#			if key in blockers:
-#				current_block = block
-#				doc[current_block] = []
-#			else:
-#				doc[key] = []
-#			doc
-#		else:
-#			doc[key] = value
+			field = sales_fields[key]
+
+			# This is where real tests start for constructing document
+			
+			# Repeats False
+			if key not in sales_repeats:
+				# key == record number taken care of above, so only F covered here
+				current_field = field
+				doc[field] = value
+			
+			# Repeats True
+			else:
+				
+				# Blocks False -- List of items
+				if key not in sales_blocks:
+										
+					# Field == current_field False
+					if field != current_field:
+						current_field = field
+						index = 0
+						doc[field] = []
+						
+					# Field == current_field True
+					else:
+						index += 1
+					
+					doc[field].append(value)
+					
+				
+				# Blocks True -- List of dicts / objects
+				else:
+					block = sales_blocks[key]
+					
+					# Block == current_block False
+					if block != current_block:
+						doc[block] = []
+						current_block = block
+					
+					# Block == current_block True
+					else:
+						
+			
