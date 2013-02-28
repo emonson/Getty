@@ -14,7 +14,7 @@ catalogue_path = os.path.join(data_dir, catalogue_file)
 fields_file = 'format_and_fields.txt'
 fields_path = os.path.join(script_dir, fields_file)
 
-data_file = 'monson_sales_contents.txt'
+data_file = 'monson_no_caret_codes.txt'
 data_path = os.path.join(data_dir, data_file)
 
 re_dot = re.compile(r'\.')
@@ -108,7 +108,7 @@ for line in fields_in:
 # Sales contents actual data
 print "Loading Sales Contents into DB"
 n_lines = file_len(data_path)
-data_in = codecs.open(data_path, 'r', 'utf-8')
+data_in = codecs.open(data_path, 'r', 'iso-8859-1')
 
 doc = {}
 current_field = None
@@ -136,6 +136,11 @@ for ii, line in enumerate(data_in):
 	
 	key = line[:17].strip()
 	value = line[17:].strip()
+	
+	# blank lines
+	if not key:
+		continue
+	
 	if key == '--RECORD NUMBER--':
 		if current_field is not None:		# don't save on first line of the file
 			db.sales.save(doc)
@@ -145,7 +150,7 @@ for ii, line in enumerate(data_in):
 	else:
 		# Check first to see if field name is one we know about
 		if key not in sales_fields:
-			sys.exit('Problem with key ' + key)	
+			sys.exit('Problem with key ' + key + ' line ' + str(ii))	
 		else:
 			field = sales_fields[key]
 
