@@ -3,12 +3,24 @@ import os
 import re
 import sys
 import codecs
+from pymongo import Connection
 
-data_dir = '/Users/emonson/Data/Getty'
-data_file = 'lotprices.csv'
-data_path = os.path.join(data_dir, data_file)
+# File method
+# data_dir = '/Users/emonson/Data/Getty'
+# data_file = 'lotprices.csv'
+# data_path = os.path.join(data_dir, data_file)
+# data_in = codecs.open(data_path, 'r', 'utf-8')
 
-data_in = codecs.open(data_path, 'r', 'utf-8')
+# Get data directly from MongoDB
+# Make a connection to Mongo.
+try:
+    db_conn = Connection()
+    # db_conn = Connection("emo2.trinity.duke.edu", 27017)
+except ConnectionFailure:
+    print "couldn't connect: be sure that Mongo is running on localhost:27017"
+    sys.exit(1)
+
+db = db_conn['getty']
 
 # Tokenizer
 # token_patterns = r'''
@@ -28,17 +40,21 @@ data_in = codecs.open(data_path, 'r', 'utf-8')
 
 
 # Define tagger
-tag_patterns = [(r'[0-9]+(?:\.[0-9]+)?', 'NUM'),
+tag_patterns = [(r'[0-9]+(?:(?:\.|:)[0-9]+){0,2}', 'NUM'),
 						(r'livre(s)?', 'CUR'),
 						(r'franc(s)?', 'CUR'),
+						(r'fl', 'CUR'),
+						(ur'\u00A3', 'CUR'),
 						(r'^ou$', 'OR'),
 						(r'&', 'AND'),
+						(r'and', 'AND'),
 						(ur'\u00E0', 'RNG'),
 						(r'lots', 'LOTS'),
 						(r'\[\w\]', 'LOTMOD'),
 						(r'\[\w-\w\]', 'LOTRNG'),
 						(r'\[\?\]', 'QU'),
 						(r'\|\w', 'SUBFIELD'),
+						(r'-', 'RNG'),
 						(r'\w+', 'O')
 						]
 
@@ -66,9 +82,13 @@ ch_lots = nltk.RegexpParser(lots_grammar)
 
 re_subfield = re.compile(r'(\|\w) *')
 
-for line in data_in:
-	cols = line.split(',')
-	price = cols[2].strip(' "\n\r')
+# File method
+# for line in data_in:
+# 	cols = line.split(',')
+# 	price = cols[2].strip(' "\n\r')
+# Direct from MongoDB method
+for entry in db.sales.find({'price':{'$exists':True},'data_file':{'$regex':r'rand'}},{'price':True}):
+	price = entry['price']
 	
 	if price:
 		

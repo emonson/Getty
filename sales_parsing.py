@@ -14,8 +14,11 @@ catalogue_path = os.path.join(data_dir, catalogue_file)
 fields_file = 'format_and_fields.txt'
 fields_path = os.path.join(script_dir, fields_file)
 
-data_file = 'monson_no_caret_codes.txt'
-data_path = os.path.join(data_dir, data_file)
+data_files = [
+							'rand_dutch_data.txt',
+							'rand_scandi_data.txt',
+							'monson_no_caret_codes.txt',
+							]
 
 re_dot = re.compile(r'\.')
 re_dotcomma = re.compile(r'[.,]')
@@ -68,7 +71,7 @@ for line in cat_in:
 	db.catalogues.save(cat_doc)
 
 
-# Sales contents fields
+# Sales fields
 print "Loading Fields into DB"
 fields_in = codecs.open(fields_path, 'r', 'utf-8')
 sales_fields = {}
@@ -82,6 +85,11 @@ field_field_names = [re_spdash.sub('_',re_dot.sub('',x.strip().lower())) for x i
 
 for line in fields_in:
 	data = line.rstrip().split('\t')
+	
+	# Allow comment lines in fields file
+	if data[0].startswith('#'):
+		continue
+		
 	field_doc = {}
 	for ii, item in enumerate(data):
 		# strip double quotes and turn multiple spaces into single
@@ -106,99 +114,103 @@ for line in fields_in:
 
 
 # Sales contents actual data
-print "Loading Sales Contents into DB"
-n_lines = file_len(data_path)
-data_in = codecs.open(data_path, 'r', 'iso-8859-1')
+for data_file in data_files:
 
-doc = {}
-current_field = None
-current_block = None
-index = 0
-field = None
-block = None
-key = None
-value = None
+	print "Loading Sales Contents into DB from", data_file
+	data_path = os.path.join(data_dir, data_file)
+	n_lines = file_len(data_path)
+	data_in = codecs.open(data_path, 'r', 'iso-8859-1')
 
-for ii, line in enumerate(data_in):
-	if ii % 10000 == 0:
-		print str(ii).rjust(len(str(n_lines))), '/', n_lines
+	doc = {}
+	current_field = None
+	current_block = None
+	index = 0
+	field = None
+	block = None
+	key = None
+	value = None
+
+	for ii, line in enumerate(data_in):
+		if ii % 10000 == 0:
+			print str(ii).rjust(len(str(n_lines))), '/', n_lines
 		
-	if line.startswith(' '):
-		# Need to figure out what sort of previous entry, so can append properly
-		if key not in sales_repeats:
-			doc[current_field] += ' ' + line.strip()
-		else:
-			if key not in sales_blocks:
-				doc[current_field][index] += ' ' + line.strip()
-			else:
-				doc[current_block][index][current_field] += ' ' + line.strip()
-		continue
-	
-	key = line[:17].strip()
-	value = line[17:].strip()
-	
-	# blank lines
-	if not key:
-		continue
-	
-	if key == '--RECORD NUMBER--':
-		if current_field is not None:		# don't save on first line of the file
-			db.sales.save(doc)
-		doc = {}
-		current_field = 'record_number'	# or could do None...
-		doc['record_number'] = value
-	else:
-		# Check first to see if field name is one we know about
-		if key not in sales_fields:
-			sys.exit('Problem with key ' + key + ' line ' + str(ii))	
-		else:
-			field = sales_fields[key]
-
-			# This is where real tests start for constructing document
-			# TODO: This is where type changes or additional parsing needs to happen on value...
-			
-			# Repeats False
+		if line.startswith(' '):
+			# Need to figure out what sort of previous entry, so can append properly
 			if key not in sales_repeats:
-				# key == record number taken care of above, so only F covered here
-				current_field = field
-				doc[field] = value
-			
-			# Repeats True
+				doc[current_field] += ' ' + line.strip()
 			else:
-				
-				# Field == current_field False
-				if field != current_field:
-					current_field = field
-					index = 0
-					
-				# Field == current_field True
-				else:
-					index += 1
-				
-				# Blocks False -- List of items
 				if key not in sales_blocks:
-					
-					current_block = None
-
-					if field not in doc:
-						doc[field] = []
-						
-					doc[field].append(value)
-				
-				# Blocks True -- List of dicts / objects
+					doc[current_field][index] += ' ' + line.strip()
 				else:
-					block = sales_blocks[key]
-					
-					# Block == current_block False
-					if block != current_block:
-						current_block = block
+					doc[current_block][index][current_field] += ' ' + line.strip()
+			continue
+	
+		key = line[:17].strip()
+		value = line[17:].strip()
+	
+		# blank lines
+		if not key:
+			continue
+	
+		if key == '--RECORD NUMBER--':
+			if current_field is not None:		# don't save on first line of the file
+				db.sales.save(doc)
+			doc = {}
+			current_field = 'record_number'	# or could do None...
+			doc['record_number'] = value
+			doc['data_file'] = data_file
+		else:
+			# Check first to see if field name is one we know about
+			if key not in sales_fields:
+				sys.exit('Problem with key ' + key + ' line ' + str(ii))	
+			else:
+				field = sales_fields[key]
 
-					if block not in doc:
-						doc[block] = []
+				# This is where real tests start for constructing document
+				# TODO: This is where type changes or additional parsing needs to happen on value...
+			
+				# Repeats False
+				if key not in sales_repeats:
+					# key == record number taken care of above, so only F covered here
+					current_field = field
+					doc[field] = value
+			
+				# Repeats True
+				else:
+				
+					# Field == current_field False
+					if field != current_field:
+						current_field = field
+						index = 0
 					
-					if len(doc[block]) < index + 1:
-						doc[block].append({})
+					# Field == current_field True
+					else:
+						index += 1
+				
+					# Blocks False -- List of items
+					if key not in sales_blocks:
 					
-					doc[block][index][field] = value
+						current_block = None
+
+						if field not in doc:
+							doc[field] = []
+						
+						doc[field].append(value)
+				
+					# Blocks True -- List of dicts / objects
+					else:
+						block = sales_blocks[key]
+					
+						# Block == current_block False
+						if block != current_block:
+							current_block = block
+
+						if block not in doc:
+							doc[block] = []
+					
+						if len(doc[block]) < index + 1:
+							doc[block].append({})
+					
+						doc[block][index][field] = value
 					
 			
