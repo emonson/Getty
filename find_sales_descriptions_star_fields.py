@@ -60,7 +60,7 @@ print fields.most_common(100)
 print 'Repeated fields'
 print repeat_fields
 
-for k in fields:
+for k in sorted(fields):
     print k
 
 

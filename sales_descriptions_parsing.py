@@ -101,12 +101,15 @@ for ii, line in enumerate(data_in):
                 doc[current_block][index][current_field] += ' ' + line.strip()
         continue
 
-    star_field_name = line[:17].strip()
+    key = line[:17].strip()
     value = line[17:].strip()
 
     # blank lines
-    if not star_field_name:
+    if not key:
         continue
+        
+    # Only assign star_field_name if have not encountered a blank so can use in continuing line dict lookup
+    star_field_name = key
 
     if star_field_name == '--RECORD NUMBER--':
         
@@ -123,7 +126,7 @@ for ii, line in enumerate(data_in):
         # Check first to see if field name is one we know about
         # ***
         if star_field_name not in fields_properties:
-            sys.exit('Problem with key ' + key + ' line ' + str(ii))    
+            sys.exit('Problem with key ' + star_field_name + ' line ' + str(ii))    
         else:
             # ***
             db_field = fields_properties[star_field_name]['db_field_name']
