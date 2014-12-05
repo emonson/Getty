@@ -21,7 +21,7 @@ except ConnectionFailure:
     print "couldn't connect: be sure that Mongo is running on localhost:27017"
     sys.exit(1)
 
-db = db_conn['getty']
+db = db_conn['getty_18th']
 
 # Define tagger
 # Early tags well match before late ones, so order matters and can help give priority
@@ -36,20 +36,34 @@ tag_patterns = [(r'[0-9]+(?:(?:\.|:)[0-9]+){0,2}', 'NUM'),
                         (r'lives', 'LIVRES'),
                         (r'ivres', 'LIVRES'),
                         (r'Livres', 'LIVRES'),
+                        (r'pouces?', 'POUCES'),
+                        (r'lignes?', 'LIGNES'),
+                        (r'sous?', 'SOLS'),
+                        (r'sols?', 'SOLS'),
                         (r'franc(s)?', 'FRANCS'),
-                        (r'frs', 'FRANCS'),
+                        (r'[Ff]rs?', 'FRANCS'),
+                        (r'assignats', 'ASSIGNATS'),
                         (r'fl', 'CUR'),
                         (ur'\u00A3', 'CUR'),
+                        (ur'\u00E9cus', 'ECU'),
+                        (ur'\u00E9cu', 'ECU'),
                         (r'\[?ou\]?', 'OR'),
+                        (r'\[?or\]?', 'OR'),
+                        (r'\[?o\xf9\]?', 'OR'),
                         (r'&', 'AND'),
                         (r'and', 'AND'),
-                        (r'et', 'AND'),
+                        (r'\[?et\]?', 'AND'),
                         (ur'\u00E0', 'RNG'),
-                        (r'pour', 'POUR'),
-                        (r'les', 'LES'),
-                        (r'lots', 'LOTS'),
-                        (r'nos\.?', 'NOS'),
-                        (r'\[[a-z][a-z]?\]', 'LOTMOD'),
+                        (r'[Pp]our', 'POUR'),
+                        (r'[Aa]vec', 'AVEC'),
+                        (r'les?', 'LES'),
+                        (r'lots?', 'LOTS'),
+                        (r'lora', 'LOTS'),
+                        (r'n[o\xba\xb0]s?\.?', 'NOS'),
+                        (r'\[?coup\xe9\]?', 'COUPE'),
+                        (r'\[illisible\]', 'ILLEGIBLE'),
+                        (r"Le prix indiqu\xe9 par l'annotation manuscrite est peu lisible.", 'XX'),
+                        (r'[a-z]?\[[A-Za-z][a-z]?[\]\)]', 'LOTMOD'),
                         (r'[a-z]', 'LOTMOD'),
                         (r'\[[a-z][a-z]?-[a-z][a-z]?\]', 'LOTRNG'),
                         (r'\[\?\]', 'QU'),
@@ -93,7 +107,7 @@ VERBOSE = False
 #   cols = line.split(',')
 #   price = cols[2].strip(' "\n\r')
 # Direct from MongoDB method
-for entry in db.sales.find({'price':{'$exists':True},'country_authority':'France'},{'price':True,'lot_number':True}):
+for ii,entry in enumerate(db.contents.find({'price':{'$exists':True},'country_authority':'France'},{'price':True,'lot_number':True})):
     
     price = entry['price']
     # print u'———————————'
@@ -124,11 +138,14 @@ for entry in db.sales.find({'price':{'$exists':True},'country_authority':'France
             # print tagged
             
             # See what all of the tag sets are
+            if any([(b==None) for (_,b) in tagged]):
+                print ii, price_field
+                print tagged
             tag_set = ' '.join([b for (_,b) in tagged])
             tag_sets_counter[tag_set] += 1
             
             # DEBUG
-            if tag_set.find('LOTRNG') >= 0:
+            if tag_set.find('X LES') >= 0:
                 print price_field, '--', entry['lot_number']
                 # print '_'.join(tokens)
 #              
@@ -159,6 +176,7 @@ for entry in db.sales.find({'price':{'$exists':True},'country_authority':'France
 print
 print 'number of tag sets', len(tag_sets_counter)
 
-print
-for tagset in sorted(tag_sets_counter):
-    print str(tag_sets_counter[tagset]).rjust(5), tagset
+# for tagset in sorted(tag_sets_counter):
+#     print str(tag_sets_counter[tagset]).rjust(5), tagset
+for tagset in sorted(tag_sets_counter.items(), key=lambda x: x[1], reverse=True):
+    print str(tagset[1]).rjust(5), tagset[0]
