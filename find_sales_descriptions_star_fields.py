@@ -6,7 +6,8 @@ data_dir = '/Users/emonson/Data/Getty/18th_century'
 script_dir = '/Users/emonson/Programming/ArtMarkets/Getty'
 
 # Sales descriptions data (about the auctions themselves, not the "contents", which are the lots up for sale)
-descriptions_file = '18th_cent_sales_descriptions.txt'
+descriptions_file = '18th_cent_french_sales_contents_v1.txt'
+# descriptions_file = '18th_cent_sales_descriptions_v3.txt'
 descriptions_path = os.path.join(data_dir, descriptions_file)
 
 # Fast file line count subroutine
@@ -19,7 +20,6 @@ def file_len(fname):
 		raise IOError(err)
 	return int(result.strip().split()[0])
 	
-print "Loading Sales Contents into DB from", descriptions_file
 n_lines = file_len(descriptions_path)
 data_in = codecs.open(descriptions_path, 'r', 'iso-8859-1')
 
@@ -28,7 +28,7 @@ repeat_fields = set()
 record_fields_list = []
 
 for ii, line in enumerate(data_in):
-    if ii % 10000 == 0:
+    if ii % 50000 == 0:
         print str(ii).rjust(len(str(n_lines))), '/', n_lines
     
     # continued lines
@@ -56,11 +56,15 @@ for ii, line in enumerate(data_in):
 
 print 'All fields'
 print fields.most_common(100)
-
-print 'Repeated fields'
-print repeat_fields
+print
 
 for k in sorted(fields):
     print k
+print
+
+print 'Repeated fields'
+for k in sorted(repeat_fields):
+    print k
+
 
 
