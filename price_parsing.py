@@ -342,19 +342,20 @@ for ii,entry in enumerate(db.contents.find(query,{'price':True,'lot_number':True
                     upset['unparsed_lots'] = True           
             
             
-        # -------------------
-        # Do actual update of document in DB with new fields
-        if UPDATE:
-            # HACK: Don't know why, but the update won't work if up['$unset'] is present but empty...
-            if len(upunset) == 0:
-                upunset['xxx'] = ''
-            db.contents.update(ID, up, upsert=False, multi=False)
-            # print ID
-            # print up
-
         if VERBOSE: print
         # Only hits this after processing a line, not a tag
         subfield_flag = None
+
+    # -------------------
+    # Do actual update of document in DB with new fields
+    if UPDATE:
+        # NOTE: Don't know why, but the update won't work if up['$unset'] is present but empty...
+        if len(upunset) == 0:
+            del up['$unset']
+        db.contents.update(ID, up, upsert=False, multi=False)
+        # print ID
+        # print up
+
 
 if VERBOSE:
     print
