@@ -97,7 +97,7 @@ n_records = db.contents.find(query).count()
 for ii,entry in enumerate(db.contents.find(query,{'price':True,'lot_number':True,'price_decimal':True})):
     
     if ii % 10000 == 0:
-        print str(ii).rjust(len(str(n_records))), '/', n_records
+        print str(ii).rjust(len(str(n_records))), '/', n_records, '(', float(ii)/float(n_records), ')'
 
     price = entry['price']
     # print u'———————————'
@@ -109,7 +109,7 @@ for ii,entry in enumerate(db.contents.find(query,{'price':True,'lot_number':True
     up['$set'] = {}
     upset = up['$set']
     up['$unset'] = {}
-    upunset = {}
+    upunset = up['$unset']
             
     # split on |c type subsection divider
     price_subfields = re_subfield.split(price)
@@ -345,17 +345,23 @@ for ii,entry in enumerate(db.contents.find(query,{'price':True,'lot_number':True
         # -------------------
         # Do actual update of document in DB with new fields
         if UPDATE:
+            # HACK: Don't know why, but the update won't work if up['$unset'] is present but empty...
+            if len(upunset) == 0:
+                upunset['xxx'] = ''
             db.contents.update(ID, up, upsert=False, multi=False)
+            # print ID
+            # print up
 
         if VERBOSE: print
         # Only hits this after processing a line, not a tag
         subfield_flag = None
 
-print
-print 'number of tag sets', len(tag_sets_counter)
+if VERBOSE:
+    print
+    print 'number of tag sets', len(tag_sets_counter)
 
-for tagset in sorted(tag_sets_counter):
-    print str(tag_sets_counter[tagset]).rjust(5), tagset
-# for ii,tagset in enumerate(sorted(tag_sets_counter.items(), key=lambda x: x[1], reverse=True)):
-#     print str(ii).rjust(3), str(tagset[1]).rjust(5), tagset[0]
-#     # print tagset[1]
+    for tagset in sorted(tag_sets_counter):
+        print str(tag_sets_counter[tagset]).rjust(5), tagset
+    # for ii,tagset in enumerate(sorted(tag_sets_counter.items(), key=lambda x: x[1], reverse=True)):
+    #     print str(ii).rjust(3), str(tagset[1]).rjust(5), tagset[0]
+    #     # print tagset[1]
