@@ -10,7 +10,7 @@ data_dir = '/Users/emonson/Data/Getty/18th_century'
 script_dir = '/Users/emonson/Programming/ArtMarkets/Getty'
 
 # Sales descriptions data (about the auctions themselves, not the "contents", which are the lots up for sale)
-descriptions_file = '18th_cent_french_sales_contents_v1.txt'
+descriptions_file = '18th_cent_french_sales_contents_v2.txt'
 descriptions_path = os.path.join(data_dir, descriptions_file)
 
 # Tab-separated values text file describing data fields, their types, and whether they repeat
@@ -181,5 +181,9 @@ for ii, line in enumerate(data_in):
                         doc[block].append({})
                 
                     doc[block][index][db_field] = value
-                
+
+# Save the final doc
+if current_field is not None:       # don't save on first line of the file
+    db.contents.save(doc)
+               
         

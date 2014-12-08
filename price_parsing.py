@@ -62,7 +62,7 @@ tag_patterns = [(r'[0-9]+(?:(?:\.|:)[0-9]+){0,2}', 'NUM'),
                         (r'n[o\xba\xb0]s?\.?', 'NOS'),
                         (r'\[?coup\xe9\]?', 'COUPE'),
                         (r'\[illisible\]', 'ILLEGIBLE'),
-                        (r"Le prix indiqu\xe9 par l'annotation manuscrite est peu lisible.", 'XX'),
+                        (r"Le prix indiqu\xe9 par l'annotation manuscrite est peu lisible.", 'ILLEGIBLE'),
                         (r'[a-z]?\[[A-Za-z][a-z]?[\]\)]', 'LOTMOD'),
                         (r'[a-z]', 'LOTMOD'),
                         (r'\[[a-z][a-z]?-[a-z][a-z]?\]', 'LOTRNG'),
@@ -145,9 +145,10 @@ for ii,entry in enumerate(db.contents.find({'price':{'$exists':True},'country_au
             tag_sets_counter[tag_set] += 1
             
             # DEBUG
-            if tag_set.find('X LES') >= 0:
+            if tag_set.find('LOTMOD LOTMOD LOTMOD') >= 0:
                 print price_field, '--', entry['lot_number']
                 # print '_'.join(tokens)
+
 #              
 #             # Chunking 
 #             if subfield_flag == None:
@@ -178,5 +179,6 @@ print 'number of tag sets', len(tag_sets_counter)
 
 # for tagset in sorted(tag_sets_counter):
 #     print str(tag_sets_counter[tagset]).rjust(5), tagset
-for tagset in sorted(tag_sets_counter.items(), key=lambda x: x[1], reverse=True):
-    print str(tagset[1]).rjust(5), tagset[0]
+for ii,tagset in enumerate(sorted(tag_sets_counter.items(), key=lambda x: x[1], reverse=True)):
+    print str(ii).rjust(3), str(tagset[1]).rjust(5), tagset[0]
+    # print tagset[1]

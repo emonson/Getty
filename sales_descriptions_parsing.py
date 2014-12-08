@@ -181,4 +181,7 @@ for ii, line in enumerate(data_in):
                 
                     doc[block][index][db_field] = value
                 
-        
+# Save the final doc
+if current_field is not None:       # don't save on first line of the file
+    db.descriptions.save(doc)
+      
