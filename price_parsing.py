@@ -107,11 +107,11 @@ VERBOSE = False
 #   cols = line.split(',')
 #   price = cols[2].strip(' "\n\r')
 # Direct from MongoDB method
-for ii,entry in enumerate(db.contents.find({'price':{'$exists':True},'country_authority':'France'},{'price':True,'lot_number':True})):
+for ii,entry in enumerate(db.contents.find({'price':{'$exists':True},'country_authority':'France'},{'price':True,'lot_number':True}).limit(20)):
     
     price = entry['price']
-    # print u'———————————'
-    # print price
+    print u'———————————'
+    print entry
     
     # split on |c type subsection divider
     price_subfields = re_subfield.split(price)
@@ -169,6 +169,58 @@ for ii,entry in enumerate(db.contents.find({'price':{'$exists':True},'country_au
 #                 if n_incs == 0:
 #                     print '*** NOTES NOT CAUGHT **', len(price)
 #         
+            
+            # -------------------
+            # Actual updates
+            ID = {'_id':entry['_id']}
+            up = {}
+            up['$set'] = {}
+            upset = up['$set']
+            
+            if tag_set == 'NUM LIVRES':
+                upset['price_decimal'] = float(tagged[0][0])
+                upset['currency'] = 'livres'
+                db.contents.update(ID, up, upsert=False, multi=False)
+            
+            elif tag_set == 'NUM LIVRES NUM':
+                upset['price_decimal'] = tagged[0][0] + tagged[2][0]/20.0
+                upset['currency'] = 'livres'
+                db.contents.update(ID, up, upsert=False, multi=False)
+            
+            elif tag_set == 'NUM FRANCS':
+                upset['price_decimal'] = float(tagged[0][0])
+                upset['currency'] = 'francs'
+                db.contents.update(ID, up, upsert=False, multi=False)
+            
+            elif tag_set == 'POUR LES LOTS NOS NUM LOTRNG':
+                pass
+            elif tag_set == 'NUM FRANCS NUM':
+                pass
+            elif tag_set == 'NUM LIVRES NUM SOLS':
+                pass
+            elif tag_set == 'POUR LES LOTS NOS NUM AND NUM':
+                pass
+            elif tag_set == 'POUR LES LOTS NOS NUM LOTMOD AND NUM LOTMOD':
+                pass
+            elif tag_set == 'POUR LES LOTS NUM LOTRNG':
+                pass
+            elif tag_set == 'POUR LES LOTS NUM LOTMOD AND LOTMOD':
+                pass
+            elif tag_set == 'NUM ASSIGNATS':
+                pass
+            elif tag_set == 'NUM OR NUM LIVRES':
+                pass
+            elif tag_set == 'POUR LES LOTS NOS NUM LOTMOD AND LOTMOD':
+                pass
+            elif tag_set == 'LIVRES':
+                pass
+            elif tag_set == 'NUM':
+                pass
+            
+            
+            
+            
+            
             
         if VERBOSE: print
         # Only hits this after processing a line, not a tag
