@@ -44,8 +44,8 @@ tag_patterns = [(r'[0-9]+(?:(?:\.|:)[0-9]+){0,2}', 'NUM'),
                         (r'franc(s)?', 'FRANCS'),
                         (r'[Ff]rs?', 'FRANCS'),
                         (r'assignats', 'ASSIGNATS'),
-                        (r'fl', 'CUR'),
-                        (ur'\u00A3', 'CUR'),
+                        (r'fls?', 'FLORINS'),
+                        (ur'\u00A3', 'POUNDS'),
                         (ur'\u00E9cus', 'ECU'),
                         (ur'\u00E9cu', 'ECU'),
                         (r'\[?ou\]?', 'OR'),
@@ -54,7 +54,6 @@ tag_patterns = [(r'[0-9]+(?:(?:\.|:)[0-9]+){0,2}', 'NUM'),
                         (r'&', 'AND'),
                         (r'and', 'AND'),
                         (r'\[?et\]?', 'AND'),
-                        (ur'\u00E0', 'RNG'),
                         (r'[Pp]our', 'POUR'),
                         (r'[Aa]vec', 'AVEC'),
                         (r'les?', 'LES'),
@@ -66,10 +65,11 @@ tag_patterns = [(r'[0-9]+(?:(?:\.|:)[0-9]+){0,2}', 'NUM'),
                         (r"Le prix indiqu\xe9 par l'annotation manuscrite est peu lisible.", 'ILLEGIBLE'),
                         (r'[a-z]?\[[A-Za-z][a-z]?[\]\)]', 'LOTMOD'),
                         (r'[a-z]', 'LOTMOD'),
-                        (r'\[[a-z][a-z]?-[a-z][a-z]?\]', 'LOTRNG'),
+                        (r'\[[A-Za-z]{1,3}-[A-Za-z]{1,3}\]', 'LOTRNG'),
                         (r'\[\?\]', 'QU'),
                         (r'\|[cd]', 'SUBFIELD'),
                         (r'-', 'RNG'),
+                        (ur'\u00E0', 'RNG'),
                         (r'\w+', 'X')
                         ]
 
@@ -79,6 +79,7 @@ tokenizer = nltk.tokenize.RegexpTokenizer(token_patterns, flags=re.UNICODE)
 regexp_tagger = nltk.RegexpTagger(tag_patterns)
 
 re_subfield = re.compile(r'(\|\w) *')
+re_lotrng = re.compile(r'\[([A-Za-z]{1,3})-([A-Za-z]{1,3})\]')
 tag_sets_counter = collections.Counter()
 
 # Switch this to False if only want to explore price fields and not really update DB
@@ -86,11 +87,27 @@ UPDATE = True
 DEBUG = False
 VERBOSE = False
 
-# File method
-# for line in data_in:
-#   cols = line.split(',')
-#   price = cols[2].strip(' "\n\r')
-# Direct from MongoDB method
+# Functions for parsing lot ranges
+# Converting to base 26 since all lot ranges in the French 18th C data so far are of
+# the form [d-f] or [a-aa] or [zc-zg]
+def base26(s, digits):
+    return sum([ (ord(c)-ord('`'))*(26**i) for i,c in enumerate(s.rjust(digits,'`')[::-1]) ])
+
+def n_in_lotrng(lotrng):
+    mod_matches = re_lotrng.match(lotrng)
+    if mod_matches is None:
+        print '** lot range parsing problem! **'
+        return 0
+    mods = mod_matches.groups()
+    digits = max([len(s) for s in mods])
+    
+    # lots in range are inclusive
+    return base26(mods[1],digits) - base26(mods[0],digits) + 1
+    
+
+# ---------------------------------------
+# First pass for parsing price and lots
+
 query = {'price':{'$exists':True},'country_authority':'France'}
 n_records = db.contents.find(query).count()
 
@@ -108,8 +125,9 @@ for ii,entry in enumerate(db.contents.find(query,{'price':True,'lot_number':True
     up = {}
     up['$set'] = {}
     upset = up['$set']
-    up['$unset'] = {}
-    upunset = up['$unset']
+    # Had included unset in case running through in multiple passes
+    # up['$unset'] = {}
+    # upunset = up['$unset']
             
     # split on |c type subsection divider
     price_subfields = re_subfield.split(price)
@@ -143,7 +161,7 @@ for ii,entry in enumerate(db.contents.find(query,{'price':True,'lot_number':True
             tag_sets_counter[tag_set] += 1
             
             if DEBUG:
-                if tag_set.find('NUM ECU NUM') >= 0:
+                if tag_set.find('NUM CUR LOTMOD') >= 0:
                     print price_field, '--', entry['lot_number']
                     # print '_'.join(tokens)
             
@@ -155,191 +173,207 @@ for ii,entry in enumerate(db.contents.find(query,{'price':True,'lot_number':True
                 if tag_set == 'NUM LIVRES':
                     upset['price_decimal'] = float(tagged[0][0])
                     upset['currency'] = 'livres'
-                    upunset['unparsed_price'] = ''
             
                 elif tag_set == 'NUM LIVRES NUM':
                     upset['price_decimal'] = float(tagged[0][0]) + float(tagged[2][0])/20.0
                     upset['currency'] = 'livres'
-                    upunset['unparsed_price'] = ''
             
                 elif tag_set == 'NUM FRANCS':
                     upset['price_decimal'] = float(tagged[0][0])
                     upset['currency'] = 'francs'
-                    upunset['unparsed_price'] = ''
 
                 elif tag_set == 'POUR LES LOTS NOS NUM LOTRNG':
-                    upset['unparsed_lots'] = True
+                    upset['n_lots'] = n_in_lotrng(tagged[5][0])
                 
                 # NOTE: Using 100 sub-francs
                 elif tag_set == 'NUM FRANCS NUM':
                     upset['price_decimal'] = float(tagged[0][0]) + float(tagged[2][0])/100.0
                     upset['currency'] = 'francs'
-                    upunset['unparsed_price'] = ''
                     
                 elif tag_set == 'NUM LIVRES NUM SOLS':
                     upset['price_decimal'] = float(tagged[0][0]) + float(tagged[2][0])/20.0
                     upset['currency'] = 'livres'
-                    upunset['unparsed_price'] = ''
 
                 elif tag_set == 'POUR LES LOTS NOS NUM AND NUM':
-                    upset['unparsed_lots'] = True
+                    upset['n_lots'] = 2
+                    
                 elif tag_set == 'POUR LES LOTS NOS NUM LOTMOD AND NUM LOTMOD':
-                    upset['unparsed_lots'] = True
+                    upset['n_lots'] = 2
+
                 elif tag_set == 'POUR LES LOTS NUM LOTRNG':
-                    upset['unparsed_lots'] = True
+                    upset['n_lots'] = n_in_lotrng(tagged[4][0])
+
                 elif tag_set == 'POUR LES LOTS NUM LOTMOD AND LOTMOD':
-                    upset['unparsed_lots'] = True
+                    upset['n_lots'] = 2
                     
                 elif tag_set == 'NUM ASSIGNATS':
                     upset['price_decimal'] = float(tagged[0][0])
                     upset['currency'] = 'assignats'
-                    upunset['unparsed_price'] = ''
                 
                 # NOTE: Flag for two prices is existance of price_decimal_or field
                 elif tag_set == 'NUM OR NUM LIVRES':
                     upset['price_decimal'] = float(tagged[0][0])
                     upset['price_decimal_or'] = float(tagged[2][0])
                     upset['currency'] = 'livres'
-                    upunset['unparsed_price'] = ''
 
                 elif tag_set == 'POUR LES LOTS NOS NUM LOTMOD AND LOTMOD':
-                    upset['unparsed_lots'] = True
+                    upset['n_lots'] = 2
                 
                 elif tag_set == 'LIVRES':
                     upset['currency'] = 'livres'
-                    upunset['unparsed_price'] = ''
                 
                 elif tag_set == 'NUM':
                     upset['price_decimal'] = float(tagged[0][0])
                     upset['currency'] = 'unknown'
-                    upunset['unparsed_price'] = ''
                     
                 elif tag_set == 'POUR LES LOTS NOS NUM LOTRNG AND NUM LOTRNG':
-                    upset['unparsed_lots'] = True
+                    upset['n_lots'] = n_in_lotrng(tagged[5][0]) + n_in_lotrng(tagged[8][0])
+                    
+                # These specifiers with number ranges are problematic because sometimes the
+                #   ranges they specify have lots with letter modifiers in them. Marking as mistrust...
                 elif tag_set == 'POUR LES LOTS NOS NUM RNG NUM':
-                    upset['unparsed_lots'] = True
+                    # lot_tokens = tokenizer.tokenize(entry['lot_number'])
+                    # lot_tagged = regexp_tagger.tag(lot_tokens)
+                    # lot_tag_set = ' '.join([b for (_,b) in lot_tagged])
+                    # if lot_tag_set.find('LOTMOD') >= 0:
+                    #     upset['lot_parsing_notes'] = 'mistrust'
+                    upset['lot_parsing_notes'] = 'mistrust'
+                    upset['n_lots'] = (int(tagged[6][0]) - int(tagged[4][0])) + 1
+
                 elif tag_set == 'POUR LES LOTS NOS NUM LOTRNG AND NUM':
-                    upset['unparsed_lots'] = True
+                    upset['n_lots'] = n_in_lotrng(tagged[5][0]) + 1
+                    
                 elif tag_set == 'POUR LES LOTS NOS NUM AND NUM LOTRNG':
-                    upset['unparsed_lots'] = True
+                    upset['n_lots'] = n_in_lotrng(tagged[7][0]) + 1
+
                 elif tag_set == 'POUR LES LOTS NUM AND NUM':
-                    upset['unparsed_lots'] = True
+                    upset['n_lots'] = 2
+
                 elif tag_set == 'POUR LES LOTS NUM LOTMOD AND NUM LOTMOD':
-                    upset['unparsed_lots'] = True
+                    upset['n_lots'] = 2
+
                 elif tag_set == 'POUR LES LOTS X LOTRNG':
-                    upset['unparsed_lots'] = True
+                    upset['n_lots'] = n_in_lotrng(tagged[4][0])
+
                 elif tag_set == 'POUR LES LOTS NOS NUM AND NUM LOTMOD':
-                    upset['unparsed_lots'] = True
+                    upset['n_lots'] = 2
 
                 elif tag_set == 'FRANCS':
                     upset['currency'] = 'francs'
-                    upunset['unparsed_price'] = ''
 
                 # NOTE: Flag for two prices is existance of price_decimal_or field
                 elif tag_set == 'NUM OR NUM FRANCS':
                     upset['price_decimal'] = float(tagged[0][0])
                     upset['price_decimal_or'] = float(tagged[2][0])
                     upset['currency'] = 'francs'
-                    upunset['unparsed_price'] = ''
 
                 elif tag_set == 'POUR LES LOTS NOS NUM NUM AND NUM':
-                    upset['unparsed_lots'] = True
+                    upset['n_lots'] = 3
+
                 elif tag_set == 'POUR LES LOTS NUM LOTRNG AND NUM':
-                    upset['unparsed_lots'] = True
+                    upset['n_lots'] = n_in_lotrng(tagged[4][0]) + 1
+
                 elif tag_set == 'POUR LES LOTS NUM LOTRNG AND NUM LOTRNG':
-                    upset['unparsed_lots'] = True
+                    upset['n_lots'] = n_in_lotrng(tagged[4][0]) + n_in_lotrng(tagged[7][0])
+
                 elif tag_set == 'POUR LES LOTS NOS LOTMOD NUM LOTRNG':
-                    upset['unparsed_lots'] = True
+                    upset['n_lots'] = n_in_lotrng(tagged[6][0])
+                
                 elif tag_set == 'ILLEGIBLE':
-                    pass
+                    upset['lot_parsing_notes'] = 'illegible'
+                    
                 elif tag_set == 'POUR LES LOTS NOS NUM LOTMOD LOTMOD AND LOTMOD':
-                    upset['unparsed_lots'] = True
+                    upset['n_lots'] = 3
+
                 elif tag_set == 'POUR LES LOTS LOTMOD NUM LOTRNG':
-                    upset['unparsed_lots'] = True
+                    upset['n_lots'] = n_in_lotrng(tagged[5][0])
                     
                 # NOTE: Using 20 sub-assignats
                 elif tag_set == 'NUM ASSIGNATS NUM':
                     upset['price_decimal'] = float(tagged[0][0]) + float(tagged[2][0])/20.0
                     upset['currency'] = 'assignats'
-                    upunset['unparsed_price'] = ''
                     
                 # NOTE: Flag for two prices is existance of price_decimal_or field
                 elif tag_set == 'NUM FRANCS OR NUM FRANCS':
                     upset['price_decimal'] = float(tagged[0][0])
                     upset['price_decimal_or'] = float(tagged[3][0])
                     upset['currency'] = 'francs'
-                    upunset['unparsed_price'] = ''
 
                 elif tag_set == 'POUR LES LOTS NOS NUM LOTMOD LOTRNG':
-                    upset['unparsed_lots'] = True
+                    upset['n_lots'] = n_in_lotrng(tagged[6][0])
                 
                 elif tag_set == 'NUM FRANCS QU':
-                    upset['unparsed_price'] = True
+                    upset['price_parsing_notes'] = 'unparsed'
                 
                 elif tag_set == 'POUR LES NOS NUM LOTRNG':
-                    upset['unparsed_lots'] = True
+                    upset['n_lots'] = n_in_lotrng(tagged[4][0])
                 
                 elif tag_set == 'NUM LIVRES QU':
-                    upset['unparsed_price'] = True
+                    upset['price_parsing_notes'] = 'unparsed'
                 
                 elif tag_set == 'POUR LES LOTS NUM AND NUM LOTRNG':
-                    upset['unparsed_lots'] = True
+                    upset['n_lots'] = n_in_lotrng(tagged[6][0]) + 1
 
                 # NOTE: Flag for two prices is existance of price_decimal_or field
                 elif tag_set == 'NUM FRANCS NUM OR NUM FRANCS':
                     upset['price_decimal'] = float(tagged[0][0]) + float(tagged[2][0])/100.0
                     upset['price_decimal_or'] = float(tagged[4][0])
                     upset['currency'] = 'francs'
-                    upunset['unparsed_price'] = ''
 
                 elif tag_set == 'POUR LES LOTS NOS LOTMOD NUM AND LOTMOD NUM':
-                    upset['unparsed_lots'] = True
+                    upset['n_lots'] = 2
 
                 # NOTE: Using 20 sub-ecus
                 elif tag_set == 'NUM ECU NUM':
                     upset['price_decimal'] = float(tagged[0][0]) + float(tagged[2][0])/20.0
-                    upset['currency'] = 'ecus'
-                    upunset['unparsed_price'] = ''
+                    upset['currency'] = u'écus'
 
                 elif tag_set == 'POUR LES LOTS NOS NUM LOTMOD LOTMOD AND NUM LOTMOD LOTMOD':
-                    upset['unparsed_lots'] = True
+                    upset['n_lots'] = 2
+
                 elif tag_set == 'POUR LES LOTS NOS X LOTMOD AND X LOTMOD':
-                    upset['unparsed_lots'] = True
+                    upset['n_lots'] = 2
                 
                 elif tag_set == 'LIVRES NUM':
                     upset['price_decimal'] = float(tagged[1][0])/20.0
                     upset['currency'] = 'livres'
-                    upunset['unparsed_price'] = ''
                 
                 elif tag_set == 'AVEC LES LOTS NUM':
-                    upset['unparsed_lots'] = True
+                    upset['n_lots'] = 1
                 
                 elif tag_set == 'NUM LIVRES NUM QU':
-                    upset['unparsed_price'] = True
+                    upset['price_parsing_notes'] = 'unparsed'
                 elif tag_set == 'NUM QU FRANCS':
-                    upset['unparsed_price'] = True
+                    upset['price_parsing_notes'] = 'unparsed'
                 
                 elif tag_set == 'POUR LES LOTS NOS NUM LOTRNG AND NUM LOTRNG AND NUM LOTRNG':
-                    upset['unparsed_lots'] = True
+                    upset['n_lots'] = n_in_lotrng(tagged[5][0]) + n_in_lotrng(tagged[8][0]) + n_in_lotrng(tagged[11][0])
+
                 elif tag_set == 'POUR LES NOS NUM LOTMOD AND NUM LOTMOD':
-                    upset['unparsed_lots'] = True
+                    upset['n_lots'] = 2
+
+                # These specifiers with number ranges are problematic because sometimes the
+                #   ranges they specify have lots with letter modifiers in them. Marking as 'mistrust'...
                 elif tag_set == 'POUR LES LOTS NOS NUM NUM RNG NUM':
-                    upset['unparsed_lots'] = True
+                    upset['lot_parsing_notes'] = 'mistrust'
+                    upset['n_lots'] = (int(tagged[7][0]) - int(tagged[5][0])) + 2
                 
-                elif tag_set == 'NUM CUR LOTMOD':
-                    upset['unparsed_price'] = True
+                elif tag_set == 'NUM FLORINS':
+                    upset['price_decimal'] = float(tagged[0][0])
+                    upset['currency'] = 'florins'
+
                 elif tag_set == 'QU':
-                    upset['unparsed_price'] = True
+                    upset['price_parsing_notes'] = 'unparsed'
 
                 elif tag_set == 'NUM ECU':
                     upset['price_decimal'] = float(tagged[0][0])
-                    upset['currency'] = 'ecus'
-                    upunset['unparsed_price'] = ''
-
+                    upset['currency'] = u'écus'
+                
+                # Catch-alls for unparsed other patterns
                 elif tag_set.startswith('NUM'):
-                    upset['unparsed_price'] = True
+                    upset['price_parsing_notes'] = 'unparsed'
                 elif tag_set.startswith('POUR') or tag_set.startswith('AVEC'):
-                    upset['unparsed_lots'] = True           
+                    upset['lot_parsing_notes'] = 'unparsed'           
             
             
         if VERBOSE: print
@@ -349,12 +383,51 @@ for ii,entry in enumerate(db.contents.find(query,{'price':True,'lot_number':True
     # -------------------
     # Do actual update of document in DB with new fields
     if UPDATE:
+        # Had included unset in case running through in multiple passes
         # NOTE: Don't know why, but the update won't work if up['$unset'] is present but empty...
-        if len(upunset) == 0:
-            del up['$unset']
+        # if len(upunset) == 0:
+        #     del up['$unset']
+        
         db.contents.update(ID, up, upsert=False, multi=False)
         # print ID
         # print up
+
+
+# ---------------------------------------
+# Second pass for dividing price by lots if present
+
+print
+print 'Dividing price by lots'
+
+query = {'price_decimal':{'$exists':True}}
+n_records = db.contents.find(query).count()
+
+for ii,entry in enumerate(db.contents.find(query,{'price_decimal':True,'price_decimal_or':True,'n_lots':True})):
+    
+    if ii % 10000 == 0:
+        print str(ii).rjust(len(str(n_records))), '/', n_records, '(', float(ii)/float(n_records), ')'
+
+    # Prepare update document
+    ID = {'_id':entry['_id']}
+    up = {}
+    up['$set'] = {}
+    upset = up['$set']
+    
+    if 'n_lots' in entry:
+        upset['price_per_lot'] = float(entry['price_decimal'])/float(entry['n_lots'])
+    else:
+        upset['price_per_lot'] = float(entry['price_decimal'])
+    
+    if 'price_decimal_or' in entry:
+        if 'n_lots' in entry:
+            upset['price_per_lot_or'] = float(entry['price_decimal_or'])/float(entry['n_lots'])
+        else:
+            upset['price_per_lot_or'] = float(entry['price_decimal_or'])
+    
+    # -------------------
+    # Do actual update of document in DB with new fields
+    if UPDATE:
+        db.contents.update(ID, up, upsert=False, multi=False)
 
 
 if VERBOSE:
