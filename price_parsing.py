@@ -83,9 +83,9 @@ re_lotrng = re.compile(r'\[([A-Za-z]{1,3})-([A-Za-z]{1,3})\]')
 tag_sets_counter = collections.Counter()
 
 # Switch this to False if only want to explore price fields and not really update DB
-UPDATE = True
+UPDATE = False
 DEBUG = False
-VERBOSE = False
+VERBOSE = True
 
 # Functions for parsing lot ranges
 # Converting to base 26 since all lot ranges in the French 18th C data so far are of
@@ -376,7 +376,7 @@ for ii,entry in enumerate(db.contents.find(query,{'price':True,'lot_number':True
                     upset['lot_parsing_notes'] = 'unparsed'           
             
             
-        if VERBOSE: print
+        # if VERBOSE: print
         # Only hits this after processing a line, not a tag
         subfield_flag = None
 
@@ -434,8 +434,13 @@ if VERBOSE:
     print
     print 'number of tag sets', len(tag_sets_counter)
 
-    for tagset in sorted(tag_sets_counter):
-        print str(tag_sets_counter[tagset]).rjust(5), tagset
-    # for ii,tagset in enumerate(sorted(tag_sets_counter.items(), key=lambda x: x[1], reverse=True)):
-    #     print str(ii).rjust(3), str(tagset[1]).rjust(5), tagset[0]
-    #     # print tagset[1]
+#     for tagset in sorted(tag_sets_counter):
+#         print str(tag_sets_counter[tagset]).rjust(5), tagset
+    
+    cumulative = 0
+    n_tagsets = sum([n for s,n in tag_sets_counter.iteritems()])
+    for ii,tagset in enumerate(sorted(tag_sets_counter.items(), key=lambda x: x[1], reverse=True)):
+        cumulative += tagset[1]
+        print str(ii).rjust(3), str(tagset[1]).rjust(5), str(round(float(cumulative)/n_tagsets,4)).rjust(6), tagset[0]
+        # print tagset[1]
+
