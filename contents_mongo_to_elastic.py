@@ -32,6 +32,8 @@ if not DRY_RUN and es.indices.exists( index = es_index_name ):
 case_mapping = { "properties": {
     "title": { "analyzer": "french", "type": "string" },
     "sale_location": { "index": "not_analyzed", "type": "string" },
+    "artist_nationality": { "index": "not_analyzed", "type": "string" },
+    "artist_nationality": { "index": "not_analyzed", "type": "string" },
     "lot_number": { "index": "not_analyzed", "type": "string" }
   }
 }
@@ -54,7 +56,7 @@ actions = []
 start_time = time.time()
 
 # TODO: Make it so you don't have to specify MongoDB doc type here...
-for doc in db.contents.find({}, limit=20000):
+for doc in db.contents.find({}):
     if ii % 10000 == 0:
         # Actually feed docs to elasticsearch bulk api for indexing
         res = helpers.bulk(es, actions)
@@ -64,6 +66,29 @@ for doc in db.contents.find({}, limit=20000):
     # Replace a couple pieces that ES can't serialize from the mongo object
     id_str = str(doc['_id'])
     doc['_id'] = id_str
+    
+    # TYPO: "1784/0426" for sale_begin_date
+    if doc['sale_begin_date'] == "1784/0426":
+        doc['sale_begin_date'] = "1784/04/26"
+        
+    # Problems with some dates. Double zeros in either month or day slot.
+    # Trying to find out from the Getty what this means...
+    # Perhaps making a horrible approximation, but substituting 01 for now...
+    if doc['sale_begin_date'].find('/00') >= 0:
+        doc['sale_begin_date'] = doc['sale_begin_date'].replace('/00', '/01')
+        
+    # Data mistake? 1773/02/29 is listed in descriptions as 1773/03/29
+    if doc['sale_begin_date'] == '1773/02/29':
+        doc['sale_begin_date'] = '1773/03/29'
+        
+    # Objects in arrays aren't well supported by kibana, so making a new array of artist nationalities
+    if len(doc['artist_info']) > 0:
+        doc['artist_nationality'] = []
+        for aa in doc['artist_info']:
+            if 'nationality' in aa:
+                doc['artist_nationality'].append(aa['nationality'])
+            else:
+                doc['artist_nationality'].append('unknown')
         
     # Add doc to actions list
     doc.update({'_index':es_index_name, '_type':es_doc_type, '_op_type':'create' })
